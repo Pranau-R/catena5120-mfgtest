@@ -3,15 +3,15 @@
 Module:  catena5120-mfgtest.ino
 
 Function:
-        Test app for MCCI Catena 4610 Rev-D
+        Test app for MCCI Catena 5120.
 
 Copyright notice and License:
-        Copyright (C) 2019 MCCI Corporation.
+        Copyright (C) 2022 MCCI Corporation.
 
         An unpublished work, all rights reserved.
 
 Author:
-        Terry Moore, MCCI Corporation	October 2019
+        Terry Moore, MCCI Corporation	July 2022
 
 */
 
@@ -39,6 +39,7 @@ static_assert(
 
 using namespace McciCatena;
 using namespace McciCatenaSht3x;
+using namespace McciCatenaLtr329;
 
 /****************************************************************************\
 |
@@ -225,10 +226,10 @@ void setup_commands()
     // add the commom command tools
     setup_mfg_commands(
         gCatena,
-        234001129, // number on the PCB.
-        4610,
+        234001398, // number on the PCB.
+        5120,
         0, // no mod
-        3, // rev d
+        1, // rev b
         0  // no dash
         );
 
@@ -498,11 +499,11 @@ bool flash_init(void)
 test(2_platform_05_check_platform_guid)
     {
     const CATENA_PLATFORM * const pPlatform = gCatena.GetPlatform();
-    const MCCIADK_GUID_WIRE Guid4610 = GUID_HW_CATENA_4610_BASE(WIRE);
+    const MCCIADK_GUID_WIRE Guid5120 = GUID_HW_CATENA_5120_BASE(WIRE);
 
     assertTrue(pPlatform != nullptr, "gCatena.GetPlatform() failed -- this is normal on first boot");
     assertEqual(
-        memcmp(&Guid4610, &pPlatform->Guid, sizeof(Guid4610)), 0,
+        memcmp(&Guid5120, &pPlatform->Guid, sizeof(Guid5120)), 0,
         "platform GUID mismatch"
         );
     pass();
@@ -556,15 +557,22 @@ test(2_platform_30_init_lux)
         if (error == 0)
             {
             if (address == 41)
+                {
                 fLtr329 = true;
+                }
 
             nDevices++;
             }
         }
+
     if (nDevices == 0)
+        {
         gCatena.SafePrintf("No I2C devices found\n");
+        }
     else
+        {
         gCatena.SafePrintf("done\n");
+        }
 
     assertTrue(
         fLtr329,
@@ -578,14 +586,13 @@ test(2_platform_40_init_SHT3x)
     {
     uint32_t flags = gCatena.GetPlatformFlags();
 
-    assertNotEqual(flags & Catena::fHasBme280, 0, "No Temperature sensor in platform flags?");
+    assertNotEqual(flags & Catena::fHasSHT3x, 0, "No Temperature sensor in platform flags?");
 
     assertTrue(
         gSht3x.begin(),
         "SHT3x sensor failed begin()"
         );
     pass();
-
     }
 
 //
@@ -613,6 +620,7 @@ testing(3_platform_10_SHT3x)
             fResult,
             "gSht3x.getTemperatureHumidity() failed"
             );
+
         Serial.print("SHT3x:  T: "); Serial.print(m.Temperature);
         Serial.print("  RH: "); Serial.print(m.Humidity); Serial.println("%");
 
@@ -622,32 +630,48 @@ testing(3_platform_10_SHT3x)
         assertLess(m.Humidity, 80);
 
         if (++thistry >= ntries)
+            {
             pass();
+            }
         }
-
     }
 
 testing(3_platform_20_Lux)
     {
     skipIfFailed(2_platform_30_init_lux);
 
-    bool fResult = gLTR329.readLux();
+    const uint32_t interval = 2000;
+    const uint32_t ntries = 10;
+    static uint32_t lasttime, thistry;
+    uint32_t now = millis();
 
-    assertTrue(
-        fResult,
-        "gLTR329.readLux() failed"
-        );
+    if (lasttime != 0 && (int32_t)(now - lasttime) < interval)
+        /* skip */;
+    else
+        {
+        lasttime = now;
+        bool fResult = gLTR329.readLux();
 
-    float lux = gLTR329.readLux();
-    gCatena.SafePrintf(
+        assertTrue(
+            fResult,
+            "gLTR329.readLux() failed"
+            );
+
+        float lux = gLTR329.readLux();
+
+        gCatena.SafePrintf(
             "LTR329: %d Lux\n",
             (int)lux
             );
 
-    assertMore(lux, 250, "The Lux in lab must be > 250 lux: " << lux);
-    assertLess(lux, 12500, "The Lux in lab must be < 12500 lux: " << lux);
+        assertMore(lux, 250, "The Lux in lab must be > 250 lux: " << lux);
+        assertLess(lux, 12500, "The Lux in lab must be < 12500 lux: " << lux);
 
-    pass();
+        if (++thistry >= ntries)
+            {
+            pass();
+            }
+        }
     }
 
 static constexpr double getVbat_min() { return 2.2; }
@@ -702,7 +726,9 @@ testing(3_platform_99)
 testing(4_lora_00_provisioned)
     {
     if (! checkTestDone(3_platform_99))
-            return;
+        {
+        return;
+        }
 
     assertTrue(gLoRaWAN.IsProvisioned(), "Not provisioned yet");
     pass();
@@ -725,7 +751,9 @@ uint32_t gTxStartTime;
 testing(4_lora_10_senduplink)
     {
     if (! checkTestDone(4_lora_00_provisioned))
+        {
         return;
+        }
 
     // set the clock tolerance
     LMIC_setClockError(10*65536/100);
@@ -758,7 +786,9 @@ testing(4_lora_20_uplink_done)
         }
 
     if (!checkTestDone(4_lora_10_senduplink))
+        {
         return;
+        }
 
     if (!checkTestPass(4_lora_10_senduplink))
         {
