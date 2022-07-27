@@ -539,7 +539,7 @@ test(2_platform_30_init_lux)
     uint32_t flags = gCatena.GetPlatformFlags();
     bool fLtr329 = false;
 
-    assertNotEqual(flags & Catena::fHasLuxSi1133, 0, "No light sensor in platform flags?");
+    assertNotEqual(flags & Catena::fHasLTR329, 0, "No light sensor in platform flags?");
 
     byte error, address;
     int nDevices;
