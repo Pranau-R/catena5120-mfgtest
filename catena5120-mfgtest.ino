@@ -23,7 +23,7 @@ Author:
 #include <Catena_Mx25v8035f.h>
 #include <Catena_Guids.h>
 #include <Catena-SHT3x.h>
-#include <MCCI_Catena_LTR329.h>
+#include <mcci_ltr_329als.h>
 #include <Wire.h>
 
 #include <arduino_lmic.h>
@@ -39,7 +39,7 @@ static_assert(
 
 using namespace McciCatena;
 using namespace McciCatenaSht3x;
-using namespace McciCatenaLtr329;
+using namespace Mcci_Ltr_329als;
 
 /****************************************************************************\
 |
@@ -114,7 +114,7 @@ void setup_platform(void);
 cSHT3x gSht3x {Wire};
 
 //   LTR329 LUX sensor
-McciCatenaLtr329::cLTR329 gLTR329 {Wire};  
+Ltr_329als gLtr {Wire};  
 
 //  True if LoRaWAN passed init.
 bool gfLoRaWANPassed = false;
@@ -541,37 +541,16 @@ test(2_platform_30_init_lux)
 
     assertNotEqual(flags & Catena::fHasLTR329, 0, "No light sensor in platform flags?");
 
-    byte error, address;
-    int nDevices;
     gCatena.SafePrintf("Scanning for LTR329ALS01\n");
 
-    nDevices = 0;
-    for(address = 1; address < 127; address++ )
+    if (! gLtr.begin())
         {
-        // The i2c_scanner uses the return value of
-        // the Write.endTransmisstion to see if
-        // a device did acknowledge to the address.
-        Wire.beginTransmission(address);
-        error = Wire.endTransmission();
-
-        if (error == 0)
-            {
-            if (address == 41)
-                {
-                fLtr329 = true;
-                }
-
-            nDevices++;
-            }
-        }
-
-    if (nDevices == 0)
-        {
-        gCatena.SafePrintf("No I2C devices found\n");
+        gCatena.SafePrintf("gLtr.begin() failed\n");
         }
     else
         {
-        gCatena.SafePrintf("done\n");
+        gCatena.SafePrintf("gLtr.begin() successful\n");
+        fLtr329 = true;
         }
 
     assertTrue(
@@ -644,28 +623,34 @@ testing(3_platform_20_Lux)
     const uint32_t ntries = 10;
     static uint32_t lasttime, thistry;
     uint32_t now = millis();
+    bool fError;
 
     if (lasttime != 0 && (int32_t)(now - lasttime) < interval)
         /* skip */;
     else
         {
         lasttime = now;
-        bool fResult = gLTR329.readLux();
 
-        assertTrue(
-            fResult,
-            "gLTR329.readLux() failed"
-            );
+        // start a measurement
+        if (! gLtr.startSingleMeasurement())
+            gCatena.SafePrintf("gLtr.startSingleMeasurement() failed\n");
 
-        float lux = gLTR329.readLux();
+        // wait for measurement to complete.
+        while (! gLtr.queryReady(fError))
+            {
+            if (fError)
+                gCatena.SafePrintf("queryReady() failed\n");
+            }
+
+        float currentLux = gLtr.getLux();
 
         gCatena.SafePrintf(
             "LTR329: %d Lux\n",
-            (int)lux
+            (int)currentLux
             );
 
-        assertMore(lux, 250, "The Lux in lab must be > 250 lux: " << lux);
-        assertLess(lux, 12500, "The Lux in lab must be < 12500 lux: " << lux);
+        assertMore(currentLux, 250, "The Lux in lab must be > 250 lux: " << currentLux);
+        assertLess(currentLux, 12500, "The Lux in lab must be < 12500 lux: " << currentLux);
 
         if (++thistry >= ntries)
             {
